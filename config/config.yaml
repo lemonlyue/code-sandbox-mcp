@@ -1,0 +1,19 @@
+# mcp-server
+server:
+  name: "mcp-sandbox-server"
+  version: "1.0.0"
+
+sandbox:
+  resources:
+    max_cpu_timeout: 120 # CPU 最大使用时间
+    max_memory_mb: 512 # 内存限制(MB)
+    max_disk_mb: 1024 # 磁盘空间限制(MB)
+
+  network:
+    enabled: false # 是否启用网络访问，默认禁用更安全
+
+  engine: "docker"
+  default_timeout: 30 # default execute timeout
+  cleanup_on_exit: true # whether resources are automatically cleared when exiting
+  work_dir: "/tmp/mcp-sandbox"
+  timeout: 600 # 整体执行时间
