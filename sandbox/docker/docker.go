@@ -1,11 +1,11 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/google/uuid"
@@ -20,7 +20,7 @@ import (
 // DockerSandbox It is the Docker implementation of the Sandbox interface.
 type DockerSandbox struct {
 	client      *client.Client
-	config      *DockerSandboxConfig
+	config      *sandbox.Config
 	containerID string
 	mu          sync.Mutex
 	cleaned     bool
@@ -34,47 +34,26 @@ type DockerSandbox struct {
 
 // NewDockerSandbox
 // receive the common SandboxConfig and convert it to a Docker-specific configuration
-func NewDockerSandbox(config *sandbox.Config) (sandbox.Sandbox, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+func NewDockerSandbox(ctx context.Context, config *sandbox.Config) (sandbox.Sandbox, error) {
+	sandbox.InternalLogger.Ctx(ctx).Infof("Creating Docker client")
+	cli, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Docker Client: %w", err)
+		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
+	defer cli.Close()
+	sandbox.InternalLogger.Ctx(ctx).Infof("Docker client created successfully")
 
-	var opts []Option
-	// convert it to a Docker-specific configuration
-
-	//
-	if config.Language != "" {
-		// If the version is empty, the default is the latest version
-		if config.Version == "" {
-			config.Version = "latest"
-		}
-		runtimeImage, err := getRuntimeImage(config.Language, config.Version)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get image: %w", err)
-		}
-		opts = append(opts, WithImage(runtimeImage))
-		opts = append(opts, WithLanguage(config.Language))
-		opts = append(opts, WithVersion(config.Version))
-	}
-
-	if config.Resource != nil {
-
+	if config.Language != "" && config.Version == "" {
+		config.Version = "latest"
 	}
 
 	// Construct docker
-	return NewSandbox(cli, opts...)
-}
-
-// NewSandbox construct docker
-func NewSandbox(cli *client.Client, opts ...Option) (sandbox.Sandbox, error) {
-	cfg := &DockerSandboxConfig{}
-	for _, opt := range opts {
-		opt(cfg)
-	}
 	return &DockerSandbox{
 		client: cli,
-		config: cfg,
+		config: config,
 	}, nil
 }
 
@@ -83,19 +62,10 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	start := time.Now()
 
 	// Pull image.
-	pullResp, err := ds.client.ImagePull(ctx, ds.config.Image, image.PullOptions{})
+	err := ds.ensureImage(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pull image: %w", err)
+		return nil, err
 	}
-	defer func(pullResp io.ReadCloser) {
-		err := pullResp.Close()
-		if err != nil {
-			// todo
-		}
-	}(pullResp)
-
-	//// 将拉取日志输出到标准输出，确认拉取过程完全完成
-	//io.Copy(os.Stdout, pullResp) // 加入这行以读取拉取响应流
 
 	fileManager, err := tempfile.NewTempFileManager("/var/tmp/")
 	if err != nil {
@@ -114,21 +84,27 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 
 	id := uuid.New()
 	containerName := fmt.Sprintf("mcp_%s_%s_%s", ds.config.Language, ds.config.Version, id.String())
-	resp, err := ds.client.ContainerCreate(ctx, &container.Config{
-		Image: ds.config.Image,
-		Cmd: []string{
-			"tail", "-f", "/dev/null", // Keep the container running without exiting
-		},
-	}, &container.HostConfig{
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeBind,
-				Source: hostPath,
-				Target: hostPath,
-			},
-		},
-		AutoRemove: false, // Manual control in Cleanup
-	}, nil, nil, containerName)
+
+	containerCfg := &container.Config{}
+	hostCfg := &container.HostConfig{}
+
+	// container config
+	WithOptions(
+		containerCfg,
+		WithImage(ds.config.Image),
+		WithCommand([]string{
+			"tail", "-f", "/dev/null",
+		}...),
+	)
+
+	// host config
+	WithOptions(
+		hostCfg,
+		WithAutoRemove(false),
+		WithBindMount(hostPath, hostPath),
+	)
+
+	resp, err := ds.client.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, containerName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container: %w", err)
 	}
@@ -195,28 +171,50 @@ func (ds *DockerSandbox) Cleanup(ctx context.Context) error {
 		return nil
 	}
 
-	var err error
-	// retry
-	for i := 0; i < ds.config.RetryPolicy.MaxRetries; i++ {
-		// remove container
-		err = ds.client.ContainerRemove(ctx, ds.containerID, container.RemoveOptions{
+	cleanupOperation := func(ctx context.Context) error {
+		return ds.client.ContainerRemove(ctx, ds.containerID, container.RemoveOptions{
 			Force:         true, // force remove
 			RemoveVolumes: true,
 		})
-		if err == nil {
-			ds.containerID = "" // reset container id
-			ds.cleaned = true
-			return nil
-		}
-
-		if i < ds.config.RetryPolicy.MaxRetries-1 {
-			select {
-			case <-time.After(ds.config.RetryPolicy.RetryDelay):
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}
 	}
 
-	return fmt.Errorf("failed to remove container %s: %w", ds.containerID, err)
+	retryDecorator := sandbox.WithRetry(3, 1)
+	retryableCleanup := retryDecorator(cleanupOperation)
+	err := retryableCleanup(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to remove container %s: %w", ds.containerID, err)
+	}
+
+	ds.containerID = ""
+	ds.cleaned = true
+	return nil
+}
+
+// ensureImage
+func (ds *DockerSandbox) ensureImage(ctx context.Context) error {
+	var buf bytes.Buffer
+	exist, err := ds.client.ImageInspect(ctx, ds.config.Image, client.ImageInspectWithRawResponse(&buf))
+	if err != nil {
+		return fmt.Errorf("failed to check image: %w", err)
+	}
+
+	if exist.ID != "" {
+		sandbox.InternalLogger.Ctx(ctx).Infof("Image %s already exists, skip pulling", ds.config.Image)
+		return nil
+	}
+
+	sandbox.InternalLogger.Ctx(ctx).Infof("Image %s not found, pulling...", ds.config.Image)
+	pullResp, err := ds.client.ImagePull(ctx, ds.config.Image, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("faild to pull image: %w", err)
+	}
+
+	defer func(pullResp io.ReadCloser) {
+		err := pullResp.Close()
+		if err != nil {
+			sandbox.InternalLogger.Errorf("failed to close pull image: %s", err.Error())
+		}
+	}(pullResp)
+
+	return nil
 }

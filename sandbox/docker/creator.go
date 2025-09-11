@@ -10,7 +10,7 @@ import (
 func NewDockerSandboxCreator() func(ctx context.Context, config *sandbox.Config) (sandbox.Sandbox, error) {
 	return func(ctx context.Context, config *sandbox.Config) (sandbox.Sandbox, error) {
 		// 这里是具体的创建逻辑
-		ds, err := NewDockerSandbox(config)
+		ds, err := NewDockerSandbox(ctx, config)
 		if err != nil {
 			return nil, err
 		}

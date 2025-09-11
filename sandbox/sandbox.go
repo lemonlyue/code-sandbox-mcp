@@ -7,6 +7,7 @@ import (
 
 // Config sandbox config
 type Config struct {
+	Image    string
 	WorkDir  string
 	Language string          // language
 	Version  string          // language version

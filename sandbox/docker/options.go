@@ -1,62 +1,46 @@
 package docker
 
-import "time"
+import (
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+)
 
-type DockerSandboxConfig struct {
-	Image       string
-	MemoryMB    int64
-	CPUShares   int64
-	Timeout     time.Duration
-	Language    string
-	Version     string
-	RetryPolicy RetryPolicy
-}
+type ConfigOption func(*container.Config)
 
-type RetryPolicy struct {
-	MaxRetries int
-	RetryDelay time.Duration
-}
+type HostConfigOption func(*container.HostConfig)
 
-type Option func(config *DockerSandboxConfig)
-
-// WithImage set the container image
-func WithImage(image string) Option {
-	return func(config *DockerSandboxConfig) {
-		config.Image = image
+func WithOptions[T any](cfg *T, opts ...func(*T)) {
+	for _, opt := range opts {
+		if opt != nil {
+			opt(cfg)
+		}
 	}
 }
 
-// WithLanguage set the container language
-func WithLanguage(language string) Option {
-	return func(config *DockerSandboxConfig) {
-		config.Language = language
+func WithImage(image string) ConfigOption {
+	return func(cfg *container.Config) {
+		cfg.Image = image
 	}
 }
 
-// WithVersion set the container language version
-func WithVersion(version string) Option {
-	return func(config *DockerSandboxConfig) {
-		config.Version = version
+func WithCommand(cmd ...string) ConfigOption {
+	return func(cfg *container.Config) {
+		cfg.Cmd = cmd
 	}
 }
 
-// WithMemoryMB set the container memory(MB) limit
-func WithMemoryMB(memory int64) Option {
-	return func(config *DockerSandboxConfig) {
-		config.MemoryMB = memory
+func WithBindMount(source string, target string) HostConfigOption {
+	return func(cfg *container.HostConfig) {
+		cfg.Mounts = append(cfg.Mounts, mount.Mount{
+			Type:   mount.TypeBind,
+			Source: source,
+			Target: target,
+		})
 	}
 }
 
-// WithCPUShares set the container cpu shares
-func WithCPUShares(shares int64) Option {
-	return func(config *DockerSandboxConfig) {
-		config.CPUShares = shares
-	}
-}
-
-// WithTimeout set the container timeout
-func WithTimeout(timeout time.Duration) Option {
-	return func(config *DockerSandboxConfig) {
-		config.Timeout = timeout
+func WithAutoRemove(autoRemove bool) HostConfigOption {
+	return func(cfg *container.HostConfig) {
+		cfg.AutoRemove = autoRemove
 	}
 }

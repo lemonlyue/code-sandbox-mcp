@@ -29,12 +29,12 @@ func (n NoOpLogger) WithField(key string, value interface{}) Logger {
 	return n
 }
 
-var internalLogger Logger = &NoOpLogger{}
+var InternalLogger Logger = &NoOpLogger{}
 
 func SetLogger(logger Logger) {
 	if logger == nil {
-		internalLogger = &NoOpLogger{}
+		InternalLogger = &NoOpLogger{}
 		return
 	}
-	internalLogger = logger
+	InternalLogger = logger
 }
