@@ -26,12 +26,6 @@ type DockerSandbox struct {
 	cleaned     bool
 }
 
-//var retryPolicy config.RetryConfig
-//
-//func SetRetryPolicy(policy config.RetryConfig) {
-//	retryPolicy = policy
-//}
-
 // NewDockerSandbox
 // receive the common SandboxConfig and convert it to a Docker-specific configuration
 func NewDockerSandbox(ctx context.Context, config *sandbox.Config) (sandbox.Sandbox, error) {
@@ -43,11 +37,21 @@ func NewDockerSandbox(ctx context.Context, config *sandbox.Config) (sandbox.Sand
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
-	defer cli.Close()
+	defer func(cli *client.Client) {
+		err := cli.Close()
+		if err != nil {
+			sandbox.InternalLogger.Errorf("failed to close docker: %s", err.Error())
+		}
+	}(cli)
 	sandbox.InternalLogger.Ctx(ctx).Infof("Docker client created successfully")
 
 	if config.Language != "" && config.Version == "" {
-		config.Version = "latest"
+		config.Version = config.BaseImage
+	}
+	// get runtime image
+	config.Image, err = getRuntimeImage(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get image: %w", err)
 	}
 
 	// Construct docker
@@ -117,7 +121,7 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	}
 
 	// Dynamically construct the commands to be executed within the container based on the language.
-	execCmd, err := buildExecutionCommand(ds.config.Language, hostPath)
+	execCmd, err := buildExecutionCommand(ctx, ds.config, fileManager.GetDir(), hostPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get execution command: %w", err)
 	}
@@ -152,6 +156,13 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	}
 	exitCode := inspectResp.ExitCode
 	duration := time.Since(start)
+
+	defer func() {
+		err := ds.Cleanup(ctx)
+		if err != nil {
+			sandbox.InternalLogger.Errorf("failed to clean up: %s", err.Error())
+		}
+	}()
 
 	return &sandbox.ExecutionResult{
 		Stdout:   stdoutBuf.String(),

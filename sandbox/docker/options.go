@@ -5,6 +5,16 @@ import (
 	"github.com/docker/docker/api/types/mount"
 )
 
+type ImageTmpl struct {
+	Version  string `json:"version"`
+	Language string `json:"language"`
+}
+
+type EntrypointTmpl struct {
+	ExecFile string `json:"exec_file"`
+	Path     string `json:"path"`
+}
+
 type ConfigOption func(*container.Config)
 
 type HostConfigOption func(*container.HostConfig)

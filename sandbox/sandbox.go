@@ -7,14 +7,15 @@ import (
 
 // Config sandbox config
 type Config struct {
-	Image    string
-	WorkDir  string
-	Language string          // language
-	Version  string          // language version
-	Timeout  time.Duration   // total timeout
-	Resource *ResourceConfig // resource config
-	NetWork  *NetWorkConfig  // network config
-	Engine   string          // sandbox engine types (such as "docker", "gvisor")
+	Language   string // language
+	Version    string // language version
+	Image      string // container image
+	WorkDir    string // work dir
+	BaseImage  string // base image
+	Entrypoint []string
+	Timeout    time.Duration   // total timeout
+	Resource   *ResourceConfig // resource config
+	NetWork    *NetWorkConfig  // network config
 }
 
 type NetWorkConfig struct {

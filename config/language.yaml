@@ -2,10 +2,19 @@ docker:
   languages:
     golang:
       default_image: "latest"
-      base_image: "golang:{{ .version }}-alpine" # docker image
-      entrypoint: [] # exec
+      base_image: "golang:{{ .Version }}-alpine" # docker image
+      entrypoint: ["sh", "-c", "cd {{ .Path }} && go mod init sandbox 2>/dev/null && go mod tidy 2>/dev/null && go run {{ .ExecFile }}"] # exec
 
       # language resource limits(cover the global configuration)
+      limits:
+        memory_mb: 1024
+        cpu_time: 60
+
+    php:
+      default_image: "latest"
+      base_image: "php:{{ .Version }}-cli-alpine"
+      entrypoint: ["sh", "-c", ""]
+
       limits:
         memory_mb: 1024
         cpu_time: 60
