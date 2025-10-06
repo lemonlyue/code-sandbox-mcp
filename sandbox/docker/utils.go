@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/lemonlyue/code-sandbox-mcp/sandbox"
+	"strings"
 	"text/template"
 )
 
@@ -43,4 +44,9 @@ func buildExecutionCommand(ctx context.Context, config *sandbox.Config, path str
 
 	config.Entrypoint[2] = buf.String()
 	return config.Entrypoint, nil
+}
+
+// isImageNotFoundError
+func isImageNotFoundError(err error) bool {
+	return strings.Contains(err.Error(), "No such image")
 }

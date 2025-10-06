@@ -7,6 +7,7 @@ import (
 
 // Config sandbox config
 type Config struct {
+	Suffix     string // file suffix
 	Language   string // language
 	Version    string // language version
 	Image      string // container image

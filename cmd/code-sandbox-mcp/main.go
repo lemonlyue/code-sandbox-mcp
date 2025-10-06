@@ -41,9 +41,18 @@ func main() {
 			sandbox.WithDockerCreator(dockerCreatorFunc),
 		)
 
+		configManager, err := sandbox.NewConfigManager()
+		if err != nil {
+			return nil, err
+		}
+		languageConfig := configManager.GetLanguageConfig(language)
+
 		config := &sandbox.Config{
-			Language: language,
-			Version:  version,
+			Language:   language,
+			Version:    version,
+			Image:      languageConfig.BaseImage,
+			BaseImage:  languageConfig.BaseImage,
+			Entrypoint: languageConfig.Entrypoint,
 		}
 		sb, err := factory.Create(context.Background(), config)
 		if err != nil {

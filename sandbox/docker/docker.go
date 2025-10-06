@@ -75,7 +75,8 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file manager: %w", err)
 	}
-	hostPath, err := fileManager.WriteFile("main.go", []byte(code), 0644)
+	fileName := "main." + ds.config.Suffix
+	hostPath, err := fileManager.WriteFile(fileName, []byte(code), 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write temp file: %w", err)
 	}
@@ -201,20 +202,22 @@ func (ds *DockerSandbox) Cleanup(ctx context.Context) error {
 	return nil
 }
 
-// ensureImage
+// ensureImage ensure image
 func (ds *DockerSandbox) ensureImage(ctx context.Context) error {
 	var buf bytes.Buffer
-	exist, err := ds.client.ImageInspect(ctx, ds.config.Image, client.ImageInspectWithRawResponse(&buf))
-	if err != nil {
-		return fmt.Errorf("failed to check image: %w", err)
-	}
-
-	if exist.ID != "" {
+	_, err := ds.client.ImageInspect(ctx, ds.config.Image, client.ImageInspectWithRawResponse(&buf))
+	if err == nil {
 		sandbox.InternalLogger.Ctx(ctx).Infof("Image %s already exists, skip pulling", ds.config.Image)
 		return nil
 	}
 
-	sandbox.InternalLogger.Ctx(ctx).Infof("Image %s not found, pulling...", ds.config.Image)
+	// Is the mirror image not found
+	if !isImageNotFoundError(err) {
+		sandbox.InternalLogger.Ctx(ctx).Infof("failed to inspect image: %s", err.Error())
+		return fmt.Errorf("failed to inspect image: %w", err)
+	}
+
+	// image pull
 	pullResp, err := ds.client.ImagePull(ctx, ds.config.Image, image.PullOptions{})
 	if err != nil {
 		return fmt.Errorf("faild to pull image: %w", err)
@@ -226,6 +229,11 @@ func (ds *DockerSandbox) ensureImage(ctx context.Context) error {
 			sandbox.InternalLogger.Errorf("failed to close pull image: %s", err.Error())
 		}
 	}(pullResp)
+
+	_, err = io.Copy(io.Discard, pullResp)
+	if err != nil {
+		return fmt.Errorf("failed to read pull response: %w", err)
+	}
 
 	return nil
 }
