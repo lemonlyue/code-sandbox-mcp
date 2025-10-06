@@ -212,7 +212,7 @@ func (ds *DockerSandbox) ensureImage(ctx context.Context) error {
 	}
 
 	// Is the mirror image not found
-	if !isImageNotFoundError(err) {
+	if !isImageNotFoundError(ctx, err) {
 		sandbox.InternalLogger.Ctx(ctx).Infof("failed to inspect image: %s", err.Error())
 		return fmt.Errorf("failed to inspect image: %w", err)
 	}

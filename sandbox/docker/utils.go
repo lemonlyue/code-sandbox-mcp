@@ -47,6 +47,6 @@ func buildExecutionCommand(ctx context.Context, config *sandbox.Config, path str
 }
 
 // isImageNotFoundError
-func isImageNotFoundError(err error) bool {
+func isImageNotFoundError(ctx context.Context, err error) bool {
 	return strings.Contains(err.Error(), "No such image")
 }
