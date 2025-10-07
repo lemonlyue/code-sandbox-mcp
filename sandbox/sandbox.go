@@ -25,9 +25,9 @@ type NetWorkConfig struct {
 
 // ResourceConfig sandbox env resource limit
 type ResourceConfig struct {
-	MaxCPUTime  time.Duration //
-	MaxMemoryMB int64
-	MaxDiskMB   int64
+	CpuTimeout time.Duration //
+	MemoryMb   int64
+	DiskMb     int64
 }
 
 // ExecutionResult execution result

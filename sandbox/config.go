@@ -7,40 +7,40 @@ import (
 )
 
 type SandboxConfig struct {
-	Server    SandboxServer             `yaml:"server" mapstructure:"server"`
-	Runtimes  SandboxRuntime            `yaml:"runtimes" mapstructure:"runtimes"`
-	Languages map[string]LanguageConfig `yaml:"languages" mapstructure:"languages"` // 修改这里
+	Server    ServerConfig              `yaml:"server" mapstructure:"server"`
+	Runtimes  runtimeConfig             `yaml:"runtimes" mapstructure:"runtimes"`
+	Languages map[string]languageConfig `yaml:"languages" mapstructure:"languages"` // 修改这里
 }
 
-type LanguageConfig struct {
-	Suffix       string           `yaml:"suffix" mapstructure:"suffix"`
-	DefaultImage string           `yaml:"default_image" mapstructure:"default_image"`
-	BaseImage    string           `yaml:"base_image" mapstructure:"base_image"`
-	Entrypoint   []string         `yaml:"entrypoint" mapstructure:"entrypoint"`
-	Resources    SandboxResources `yaml:"resources" mapstructure:"resources"`
+type languageConfig struct {
+	Suffix       string          `yaml:"suffix" mapstructure:"suffix"`
+	DefaultImage string          `yaml:"default_image" mapstructure:"default_image"`
+	BaseImage    string          `yaml:"base_image" mapstructure:"base_image"`
+	Entrypoint   []string        `yaml:"entrypoint" mapstructure:"entrypoint"`
+	Resources    resourcesConfig `yaml:"resources" mapstructure:"resources"`
 }
 
-type SandboxServer struct {
+type ServerConfig struct {
 	Name    string `yaml:"name" mapstructure:"name"`
 	Version string `yaml:"version" mapstructure:"version"`
 }
 
-type SandboxRuntime struct {
-	Resources     SandboxResources `yaml:"resources" mapstructure:"resources"`
-	Network       SandboxNetwork   `yaml:"network" mapstructure:"network"`
-	Engine        string           `yaml:"engine" mapstructure:"engine"`
-	CleanupOnExit bool             `yaml:"cleanup_on_exit" mapstructure:"cleanup_on_exit"`
-	WorkDir       string           `yaml:"work_dir" mapstructure:"work_dir"`
-	Timeout       string           `yaml:"timeout" mapstructure:"timeout"`
+type runtimeConfig struct {
+	Resources     resourcesConfig `yaml:"resources" mapstructure:"resources"`
+	Network       networkConfig   `yaml:"network" mapstructure:"network"`
+	Engine        string          `yaml:"engine" mapstructure:"engine"`
+	CleanupOnExit bool            `yaml:"cleanup_on_exit" mapstructure:"cleanup_on_exit"`
+	WorkDir       string          `yaml:"work_dir" mapstructure:"work_dir"`
+	Timeout       string          `yaml:"timeout" mapstructure:"timeout"`
 }
 
-type SandboxResources struct {
+type resourcesConfig struct {
 	CpuTimeout string `yaml:"cpu_timeout" mapstructure:"cpu_timeout"`
 	MemoryMb   int64  `yaml:"memory_mb" mapstructure:"memory_mb"`
 	DiskMb     int64  `yaml:"disk_mb" mapstructure:"disk_mb"`
 }
 
-type SandboxNetwork struct {
+type networkConfig struct {
 	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
 }
 
@@ -118,6 +118,6 @@ func (cm *ConfigManager) GetRuntimeEngine() string {
 	return cm.config.Runtimes.Engine
 }
 
-func (cm *ConfigManager) GetLanguageConfig(language string) LanguageConfig {
+func (cm *ConfigManager) GetLanguageConfig(language string) languageConfig {
 	return cm.config.Languages[language]
 }
