@@ -40,3 +40,14 @@ languages:
       memory_mb: 1024
       cpu_timeout: "60s"
       disk_mb: 1024 # 磁盘空间限制(MB)
+
+  python:
+    suffix: "py"
+    default_image: "latest"
+    base_image: "python:{{ .Version }}"
+    entrypoint: [ "sh", "-c", "python {{ .ExecFile }}" ]
+
+    resources:
+      memory_mb: 1024
+      cpu_timeout: "60s"
+      disk_mb: 1024 # 磁盘空间限制(MB)
