@@ -1,0 +1,53 @@
+# mcp-server
+server:
+  name: "mcp-sandbox-server"
+  version: "1.0.0"
+
+runtimes:
+  resources:
+    cpu_timeout: "120s" # CPU 最大使用时间
+    memory_mb: 512 # 内存限制(MB)
+    disk_mb: 1024 # 磁盘空间限制(MB)
+
+  network:
+    enabled: false # 是否启用网络访问，默认禁用更安全
+
+  engine: "docker"
+  cleanup_on_exit: true # whether resources are automatically cleared when exiting
+  work_dir: "/tmp/mcp-sandbox"
+  timeout: 600 # 整体执行时间
+
+languages:
+  golang:
+    suffix: "go"
+    default_image: "latest"
+    base_image: "golang:{{ .Version }}-alpine"
+    entrypoint: ["sh", "-c", "cd {{ .Path }} && go mod init sandbox 2>/dev/null && go mod tidy 2>/dev/null && go run {{ .ExecFile }}"] # exec
+
+    # language resource limits(cover the global configuration)
+    resources:
+      memory_mb: 1024
+      cpu_timeout: "60s"
+      disk_mb: 1024 # 磁盘空间限制(MB)
+
+  php:
+    suffix: "php"
+    default_image: "latest"
+    base_image: "php:{{ .Version }}-cli-alpine"
+    entrypoint: ["sh", "-c", "php {{ .ExecFile }}"]
+
+    resources:
+      memory_mb: 1024
+      cpu_timeout: "60s"
+      disk_mb: 1024 # 磁盘空间限制(MB)
+
+  python:
+    suffix: "py"
+    default_image: "latest"
+    base_image: "python:{{ .Version }}"
+    entrypoint: [ "sh", "-c", "python {{ .ExecFile }}" ]
+
+    resources:
+      memory_mb: 1024
+      cpu_timeout: "60s"
+      disk_mb: 1024 # 磁盘空间限制(MB)
