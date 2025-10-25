@@ -15,7 +15,7 @@ runtimes:
   engine: "docker"
   cleanup_on_exit: true # whether resources are automatically cleared when exiting
   work_dir: "/tmp/mcp-sandbox"
-  timeout: "600s" # 整体执行时间
+  timeout: 600 # 整体执行时间
 
 languages:
   golang:

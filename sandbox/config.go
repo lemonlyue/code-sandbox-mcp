@@ -31,7 +31,7 @@ type runtimeConfig struct {
 	Engine        string          `yaml:"engine" mapstructure:"engine"`
 	CleanupOnExit bool            `yaml:"cleanup_on_exit" mapstructure:"cleanup_on_exit"`
 	WorkDir       string          `yaml:"work_dir" mapstructure:"work_dir"`
-	Timeout       string          `yaml:"timeout" mapstructure:"timeout"`
+	Timeout       int64           `yaml:"timeout" mapstructure:"timeout"`
 }
 
 type resourcesConfig struct {
@@ -112,6 +112,10 @@ func (cm *ConfigManager) loadConfig(configPath string) error {
 
 func (cm *ConfigManager) GetConfig() *SandboxConfig {
 	return cm.config
+}
+
+func (cm *ConfigManager) GetRuntimesConfig() runtimeConfig {
+	return cm.config.Runtimes
 }
 
 func (cm *ConfigManager) GetRuntimeEngine() string {
