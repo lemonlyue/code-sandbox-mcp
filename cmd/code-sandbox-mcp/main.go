@@ -69,7 +69,7 @@ func main() {
 			Language:   language,
 			Version:    version,
 			Image:      languageConfig.BaseImage,
-			BaseImage:  languageConfig.BaseImage,
+			BaseImage:  languageConfig.DefaultImage,
 			Entrypoint: languageConfig.Entrypoint,
 			Suffix:     languageConfig.Suffix,
 		}
