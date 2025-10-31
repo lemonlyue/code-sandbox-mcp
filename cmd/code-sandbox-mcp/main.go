@@ -23,6 +23,9 @@ func main() {
 		mcp.WithMessageEndpoint("/message"), // Explicitly set message endpoint.
 	)
 
+	// Register notification handlers
+	registerNotificationHandlers(server)
+
 	// Register tools.
 	sandboxTool := mcp.NewTool("execute_code_in_sandbox",
 		mcp.WithDescription("在沙盒环境执行代码 | Execute the code in a sandbox environment"),
@@ -126,4 +129,33 @@ func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Cal
 	}
 
 	return mcp.NewTextResult(execute.Stdout), nil
+}
+
+// registerNotificationHandlers registers handlers for client notifications
+func registerNotificationHandlers(server *mcp.SSEServer) {
+	// Handle client initialization notification
+	server.RegisterNotificationHandler("notifications/initialized", func(ctx context.Context, notification *mcp.JSONRPCNotification) error {
+		log.Printf("🔵 Server received 'initialized' notification")
+		log.Printf("✅ Client initialized successfully")
+		return nil
+	})
+
+	// Handle roots list changed notification
+	server.RegisterNotificationHandler("notifications/roots/list_changed", func(ctx context.Context, notification *mcp.JSONRPCNotification) error {
+		log.Printf("🔵 Server received 'roots/list_changed' notification")
+
+		// Call ListRoots to get updated root directories from client
+		roots, err := server.ListRoots(ctx)
+		if err != nil {
+			log.Printf("❌ Failed to get roots after list_changed: %v", err)
+			return nil
+		}
+
+		log.Printf("✅ After roots list changed, server received %d roots", len(roots.Roots))
+		for i, root := range roots.Roots {
+			log.Printf("  %d. %s (%s)", i+1, root.Name, root.URI)
+		}
+
+		return nil
+	})
 }
