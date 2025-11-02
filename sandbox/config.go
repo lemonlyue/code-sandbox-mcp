@@ -5,6 +5,7 @@ import (
 	"github.com/spf13/viper"
 	"log"
 	"os"
+	"time"
 )
 
 // SandboxConfig
@@ -41,9 +42,9 @@ type runtimeConfig struct {
 
 // resourcesConfig
 type resourcesConfig struct {
-	CpuTimeout string `yaml:"cpu_timeout" mapstructure:"cpu_timeout"`
-	MemoryMb   int64  `yaml:"memory_mb" mapstructure:"memory_mb"`
-	DiskMb     int64  `yaml:"disk_mb" mapstructure:"disk_mb"`
+	CpuTimeout time.Duration `yaml:"cpu_timeout" mapstructure:"cpu_timeout"`
+	MemoryMb   int64         `yaml:"memory_mb" mapstructure:"memory_mb"`
+	DiskMb     int64         `yaml:"disk_mb" mapstructure:"disk_mb"`
 }
 
 // networkConfig

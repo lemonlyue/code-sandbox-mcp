@@ -3,6 +3,7 @@ package docker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -63,6 +64,11 @@ func NewDockerSandbox(ctx context.Context, config *sandbox.Config) (sandbox.Sand
 
 // Execute execute code
 func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.ExecutionResult, error) {
+	defer func() {
+		if err := recover(); err != nil {
+			sandbox.InternalLogger.Errorf("failed to execute: %v", err)
+		}
+	}()
 	start := time.Now()
 
 	// Pull image.
@@ -75,23 +81,20 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file manager: %w", err)
 	}
+	path := fileManager.GetDir()
 	fileName := "main." + ds.config.Suffix
 	hostPath, err := fileManager.WriteFile(fileName, []byte(code), 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write temp file: %w", err)
 	}
-	defer func(fileManager *tempfile.TempFileManager) {
-		err := fileManager.Cleanup()
-		if err != nil {
-			// todo
-		}
-	}(fileManager)
+	sandbox.InternalLogger.Infof("Write temp file successfully")
 
 	id := uuid.New()
 	containerName := fmt.Sprintf("mcp_%s_%s_%s", ds.config.Language, ds.config.Version, id.String())
 
 	containerCfg := &container.Config{}
 	hostCfg := &container.HostConfig{}
+	resourcesCfg := &container.Resources{}
 
 	// container config
 	WithOptions(
@@ -107,12 +110,22 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 		hostCfg,
 		WithAutoRemove(false),
 		WithBindMount(hostPath, hostPath),
+		WithDiskMb(path, ds.config.Resource.DiskMb),
 	)
+
+	// resource config
+	WithOptions(
+		resourcesCfg,
+		WithMemory(ds.config.Resource.MemoryMb),
+		WithCpuTimeout(ds.config.Resource.CpuTimeout),
+	)
+	sandbox.InternalLogger.Infof("the container configuration was successfully")
 
 	resp, err := ds.client.ContainerCreate(ctx, containerCfg, hostCfg, nil, nil, containerName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create container: %w", err)
 	}
+	sandbox.InternalLogger.Infof("Create container successfully")
 	ds.containerID = resp.ID
 
 	// Start the container
@@ -121,14 +134,18 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 		return nil, fmt.Errorf("failed to start container: %w", err)
 	}
 
+	sandbox.InternalLogger.Infof("Build execution command successfully")
 	// Dynamically construct the commands to be executed within the container based on the language.
-	execCmd, err := buildExecutionCommand(ctx, ds.config, fileManager.GetDir(), hostPath)
+	execCmd, err := buildExecutionCommand(ctx, ds.config, path, hostPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get execution command: %w", err)
 	}
 
+	cmdCtx, cmdCancel := context.WithTimeout(ctx, ds.config.Resource.CpuTimeout)
+	defer cmdCancel()
+
 	// Execute commands within the already running container.
-	execResp, err := ds.client.ContainerExecCreate(ctx, ds.containerID, container.ExecOptions{
+	execResp, err := ds.client.ContainerExecCreate(cmdCtx, ds.containerID, container.ExecOptions{
 		Cmd:          execCmd,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -138,7 +155,7 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	}
 
 	// Attach to the exec instance to obtain the output stream.
-	attachResp, err := ds.client.ContainerExecAttach(ctx, execResp.ID, container.ExecStartOptions{})
+	attachResp, err := ds.client.ContainerExecAttach(cmdCtx, execResp.ID, container.ExecStartOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to exec code: %w", err)
 	}
@@ -147,12 +164,28 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	var stdoutBuf, stderrBuf strings.Builder
 	_, err = stdcopy.StdCopy(&stdoutBuf, &stderrBuf, attachResp.Reader)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return &sandbox.ExecutionResult{
+				Stdout:   "",
+				Stderr:   "command execution timeout",
+				ExitCode: 124,
+				Duration: ds.config.Resource.CpuTimeout,
+			}, nil
+		}
 		return nil, fmt.Errorf("failed to get container stdout: %w", err)
 	}
 
 	// Check the exit status of the exec execution.
-	inspectResp, err := ds.client.ContainerExecInspect(ctx, execResp.ID)
+	inspectResp, err := ds.client.ContainerExecInspect(cmdCtx, execResp.ID)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return &sandbox.ExecutionResult{
+				Stdout:   "",
+				Stderr:   "command execution timeout",
+				ExitCode: 124,
+				Duration: ds.config.Resource.CpuTimeout,
+			}, nil
+		}
 		return nil, fmt.Errorf("failed to get exec inspect: %w", err)
 	}
 	exitCode := inspectResp.ExitCode
@@ -162,6 +195,10 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 		err := ds.Cleanup(ctx)
 		if err != nil {
 			sandbox.InternalLogger.Errorf("failed to clean up: %s", err.Error())
+		}
+		err = fileManager.Cleanup()
+		if err != nil {
+			sandbox.InternalLogger.Errorf("failed to clean up: %v", err)
 		}
 	}()
 
@@ -213,7 +250,7 @@ func (ds *DockerSandbox) ensureImage(ctx context.Context) error {
 
 	// Is the mirror image not found
 	if !isImageNotFoundError(ctx, err) {
-		sandbox.InternalLogger.Ctx(ctx).Infof("failed to inspect image: %s", err.Error())
+		sandbox.InternalLogger.Ctx(ctx).Errorf("failed to inspect image: %s", err.Error())
 		return fmt.Errorf("failed to inspect image: %w", err)
 	}
 

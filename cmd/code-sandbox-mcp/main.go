@@ -120,6 +120,11 @@ func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest, configMan
 		BaseImage:  languageConfig.DefaultImage,
 		Entrypoint: languageConfig.Entrypoint,
 		Suffix:     languageConfig.Suffix,
+		Resource: &sandbox.ResourceConfig{
+			CpuTimeout: languageConfig.Resources.CpuTimeout,
+			MemoryMb:   languageConfig.Resources.MemoryMb,
+			DiskMb:     languageConfig.Resources.DiskMb,
+		},
 	}
 	sb, err := factory.Create(context.Background(), config)
 	if err != nil {
@@ -136,7 +141,7 @@ func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest, configMan
 		result = execute.Stdout
 	} else {
 		result = execute.Stderr
-		sandbox.InternalLogger.Infof("Code execution stderr: %s", execute.Stderr)
+		sandbox.InternalLogger.Errorf("Code execution stderr: %s", execute.Stderr)
 	}
 	sandbox.InternalLogger.Infof("Code execution exit code: %v", execute.ExitCode)
 	sandbox.InternalLogger.Infof("Code execution duration: %s", execute.Duration)
