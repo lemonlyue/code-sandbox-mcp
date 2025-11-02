@@ -12,3 +12,9 @@ build:
 # clean the compiled file
 clean:
 	rm -rf ${BIN_DIR}
+
+# initialize the docker image of the programming language
+init-images:
+	docker pull python:latest
+	docker pull php:latest
+	docker pull golang:latest
