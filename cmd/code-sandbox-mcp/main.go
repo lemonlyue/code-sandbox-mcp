@@ -127,12 +127,19 @@ func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest, configMan
 		panic(err)
 	}
 	execute, err := sb.Execute(ctx, code)
-	log.Printf("result: %+v", execute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute in sandbox: %w", err)
 	}
+	sandbox.InternalLogger.Infof("Code execution stdout: %s", execute.Stdout)
+	sandbox.InternalLogger.Infof("Code execution stderr: %s", execute.Stderr)
+	sandbox.InternalLogger.Infof("Code execution exit code: %v", execute.ExitCode)
+	sandbox.InternalLogger.Infof("Code execution duration: %s", execute.Duration)
 
-	return mcp.NewTextResult(execute.Stdout), nil
+	result := execute.Stdout
+	if execute.Stderr != "" {
+		result = execute.Stderr
+	}
+	return mcp.NewTextResult(result), nil
 }
 
 // registerNotificationHandlers registers handlers for client notifications
