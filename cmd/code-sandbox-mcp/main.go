@@ -15,12 +15,19 @@ import (
 )
 
 func main() {
+	// Initialize Configuration
+	configManager, err := sandbox.NewConfigManager()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+		return
+	}
+
 	// Create SSE server.
 	server := mcp.NewSSEServer(
-		"SSE Code Sandbox Server",           // Server name.
-		"1.0.0",                             // Server version.
-		mcp.WithSSEEndpoint("/sse"),         // Explicitly set SSE endpoint.
-		mcp.WithMessageEndpoint("/message"), // Explicitly set message endpoint.
+		configManager.GetServerConfig().Name,    // Server name.
+		configManager.GetServerConfig().Version, // Server version.
+		mcp.WithSSEEndpoint("/sse"),             // Explicitly set SSE endpoint.
+		mcp.WithMessageEndpoint("/message"),     // Explicitly set message endpoint.
 	)
 
 	// Register notification handlers
@@ -33,7 +40,9 @@ func main() {
 		mcp.WithString("code", mcp.Required(), mcp.Description("需要执行的代码 | The code to be executed")),
 		mcp.WithString("version", mcp.Description("编程语言版本 | Programming language version")),
 	)
-	server.RegisterTool(sandboxTool, sandboxHandler)
+	server.RegisterTool(sandboxTool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return sandboxHandler(ctx, req, configManager)
+	})
 
 	log.Printf("Registered tools: execute_code_in_sandbox")
 	log.Printf("SSE endpoint: /sse")
@@ -76,7 +85,7 @@ func main() {
 }
 
 // sandboxHandler handles greet tool callback function.
-func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest, configManager *sandbox.ConfigManager) (*mcp.CallToolResult, error) {
 	select {
 	case <-ctx.Done():
 		return mcp.NewErrorResult("Request cancelled"), ctx.Err()
@@ -104,12 +113,7 @@ func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest) (*mcp.Cal
 		sandbox.WithDockerCreator(dockerCreatorFunc),
 	)
 
-	configManager, err := sandbox.NewConfigManager()
-	if err != nil {
-		return nil, err
-	}
 	languageConfig := configManager.GetLanguageConfig(language)
-
 	config := &sandbox.Config{
 		Language:   language,
 		Version:    version,
