@@ -5,16 +5,15 @@ import (
 	"github.com/lemonlyue/code-sandbox-mcp/sandbox"
 )
 
-// NewDockerSandboxCreator 返回一个函数，该函数能创建一个新的 DockerSandbox 实例。
-// 这个函数本身并不创建实例，而是返回一个创建实例的函数。
+// NewDockerSandboxCreator Return a function that can create a new DockerSandbox instance.
+// This function itself does not create an instance but returns a function that creates an instance.
 func NewDockerSandboxCreator() func(ctx context.Context, config *sandbox.Config) (sandbox.Sandbox, error) {
 	return func(ctx context.Context, config *sandbox.Config) (sandbox.Sandbox, error) {
-		// 这里是具体的创建逻辑
 		ds, err := NewDockerSandbox(ctx, config)
 		if err != nil {
 			return nil, err
 		}
-		// 确保返回的 DockerSandbox 实现了 pkg/sandbox.Sandbox 接口
+		// Make sure that the returned DockerSandbox implements the pkg/sandbox.Sandbox interface
 		return ds, nil
 	}
 }

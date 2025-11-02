@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/lemonlyue/code-sandbox-mcp/sandbox"
 	"github.com/lemonlyue/code-sandbox-mcp/sandbox/docker"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -18,7 +17,7 @@ func main() {
 	// Initialize Configuration
 	configManager, err := sandbox.NewConfigManager()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		sandbox.InternalLogger.Errorf("Failed to load config: %v", err)
 		return
 	}
 
@@ -44,9 +43,9 @@ func main() {
 		return sandboxHandler(ctx, req, configManager)
 	})
 
-	log.Printf("Registered tools: execute_code_in_sandbox")
-	log.Printf("SSE endpoint: /sse")
-	log.Printf("Message endpoint: /message")
+	sandbox.InternalLogger.Infof("Registered tools: execute_code_in_sandbox")
+	sandbox.InternalLogger.Infof("SSE endpoint: /sse")
+	sandbox.InternalLogger.Infof("Message endpoint: /message")
 
 	// Set graceful exit.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -57,31 +56,31 @@ func main() {
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-signalChan
-		log.Println("Received shutdown signal, gracefully shutting down...")
+		sandbox.InternalLogger.Infof("Received shutdown signal, gracefully shutting down...")
 		cancel()
 	}()
 
 	// Start server.
-	log.Printf("Starting SSE server on port 4000...")
+	sandbox.InternalLogger.Infof("Starting SSE server on port 4000...")
 	go func() {
 		if err := server.Start(":4000"); err != nil {
-			log.Fatalf("Server failed to start: %v", err)
+			sandbox.InternalLogger.Errorf("Server failed to start: %v", err)
 		}
 	}()
 
 	// Wait for exit signal.
 	<-ctx.Done()
-	log.Println("Shutting down server...")
+	sandbox.InternalLogger.Infof("Shutting down server...")
 
 	// Graceful exit.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server shutdown failed: %v", err)
+		sandbox.InternalLogger.Errorf("Server shutdown failed: %v", err)
 	}
 
-	log.Println("Server gracefully stopped")
+	sandbox.InternalLogger.Infof("Server gracefully stopped")
 }
 
 // sandboxHandler handles greet tool callback function.
@@ -130,15 +129,18 @@ func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest, configMan
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute in sandbox: %w", err)
 	}
-	sandbox.InternalLogger.Infof("Code execution stdout: %s", execute.Stdout)
-	sandbox.InternalLogger.Infof("Code execution stderr: %s", execute.Stderr)
+	var result string
+
+	if execute.Stderr == "" {
+		sandbox.InternalLogger.Infof("Code execution stdout: %s", execute.Stdout)
+		result = execute.Stdout
+	} else {
+		result = execute.Stderr
+		sandbox.InternalLogger.Infof("Code execution stderr: %s", execute.Stderr)
+	}
 	sandbox.InternalLogger.Infof("Code execution exit code: %v", execute.ExitCode)
 	sandbox.InternalLogger.Infof("Code execution duration: %s", execute.Duration)
 
-	result := execute.Stdout
-	if execute.Stderr != "" {
-		result = execute.Stderr
-	}
 	return mcp.NewTextResult(result), nil
 }
 
@@ -146,25 +148,25 @@ func sandboxHandler(ctx context.Context, request *mcp.CallToolRequest, configMan
 func registerNotificationHandlers(server *mcp.SSEServer) {
 	// Handle client initialization notification
 	server.RegisterNotificationHandler("notifications/initialized", func(ctx context.Context, notification *mcp.JSONRPCNotification) error {
-		log.Printf("🔵 Server received 'initialized' notification")
-		log.Printf("✅ Client initialized successfully")
+		sandbox.InternalLogger.Infof("🔵 Server received 'initialized' notification")
+		sandbox.InternalLogger.Infof("✅ Client initialized successfully")
 		return nil
 	})
 
 	// Handle roots list changed notification
 	server.RegisterNotificationHandler("notifications/roots/list_changed", func(ctx context.Context, notification *mcp.JSONRPCNotification) error {
-		log.Printf("🔵 Server received 'roots/list_changed' notification")
+		sandbox.InternalLogger.Infof("🔵 Server received 'roots/list_changed' notification")
 
 		// Call ListRoots to get updated root directories from client
 		roots, err := server.ListRoots(ctx)
 		if err != nil {
-			log.Printf("❌ Failed to get roots after list_changed: %v", err)
+			sandbox.InternalLogger.Errorf("❌ Failed to get roots after list_changed: %v", err)
 			return nil
 		}
 
-		log.Printf("✅ After roots list changed, server received %d roots", len(roots.Roots))
+		sandbox.InternalLogger.Infof("✅ After roots list changed, server received %d roots", len(roots.Roots))
 		for i, root := range roots.Roots {
-			log.Printf("  %d. %s (%s)", i+1, root.Name, root.URI)
+			sandbox.InternalLogger.Infof("  %d. %s (%s)", i+1, root.Name, root.URI)
 		}
 
 		return nil
