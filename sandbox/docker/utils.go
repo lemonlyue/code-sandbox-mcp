@@ -31,7 +31,10 @@ func buildExecutionCommand(ctx context.Context, config *sandbox.Config, path str
 		return []string{}, errors.New("failed to build execution command")
 	}
 
-	execCommand := config.Entrypoint[2]
+	entrypoint := make([]string, len(config.Entrypoint))
+	copy(entrypoint, config.Entrypoint)
+
+	execCommand := entrypoint[2]
 	tmpl := template.Must(template.New("command").Parse(execCommand))
 	data := EntrypointTmpl{
 		ExecFile: filePath,
@@ -42,8 +45,8 @@ func buildExecutionCommand(ctx context.Context, config *sandbox.Config, path str
 		return []string{}, err
 	}
 
-	config.Entrypoint[2] = buf.String()
-	return config.Entrypoint, nil
+	entrypoint[2] = buf.String()
+	return entrypoint, nil
 }
 
 // isImageNotFoundError

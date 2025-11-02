@@ -81,18 +81,13 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file manager: %w", err)
 	}
+	path := fileManager.GetDir()
 	fileName := "main." + ds.config.Suffix
 	hostPath, err := fileManager.WriteFile(fileName, []byte(code), 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write temp file: %w", err)
 	}
 	sandbox.InternalLogger.Infof("Write temp file successfully")
-	defer func(fileManager *tempfile.TempFileManager) {
-		err := fileManager.Cleanup()
-		if err != nil {
-			sandbox.InternalLogger.Errorf("failed to clean up: %v", err)
-		}
-	}(fileManager)
 
 	id := uuid.New()
 	containerName := fmt.Sprintf("mcp_%s_%s_%s", ds.config.Language, ds.config.Version, id.String())
@@ -115,7 +110,7 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 		hostCfg,
 		WithAutoRemove(false),
 		WithBindMount(hostPath, hostPath),
-		WithDiskMb(fileManager.GetDir(), ds.config.Resource.DiskMb),
+		WithDiskMb(path, ds.config.Resource.DiskMb),
 	)
 
 	// resource config
@@ -141,7 +136,7 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 
 	sandbox.InternalLogger.Infof("Build execution command successfully")
 	// Dynamically construct the commands to be executed within the container based on the language.
-	execCmd, err := buildExecutionCommand(ctx, ds.config, fileManager.GetDir(), hostPath)
+	execCmd, err := buildExecutionCommand(ctx, ds.config, path, hostPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get execution command: %w", err)
 	}
@@ -183,6 +178,14 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 	// Check the exit status of the exec execution.
 	inspectResp, err := ds.client.ContainerExecInspect(cmdCtx, execResp.ID)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return &sandbox.ExecutionResult{
+				Stdout:   "",
+				Stderr:   "command execution timeout",
+				ExitCode: 124,
+				Duration: ds.config.Resource.CpuTimeout,
+			}, nil
+		}
 		return nil, fmt.Errorf("failed to get exec inspect: %w", err)
 	}
 	exitCode := inspectResp.ExitCode
@@ -192,6 +195,10 @@ func (ds *DockerSandbox) Execute(ctx context.Context, code string) (*sandbox.Exe
 		err := ds.Cleanup(ctx)
 		if err != nil {
 			sandbox.InternalLogger.Errorf("failed to clean up: %s", err.Error())
+		}
+		err = fileManager.Cleanup()
+		if err != nil {
+			sandbox.InternalLogger.Errorf("failed to clean up: %v", err)
 		}
 	}()
 
